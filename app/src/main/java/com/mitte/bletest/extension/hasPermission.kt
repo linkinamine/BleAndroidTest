@@ -1,6 +1,7 @@
 package com.mitte.bletest.extension
 
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
 import android.view.View
@@ -38,3 +39,9 @@ fun EditText.showKeyboard(context: Context) {
 fun String.hexToBytes() =
     this.chunked(2).map { it.toUpperCase(Locale.US).toInt(16).toByte() }.toByteArray()
 
+fun Int.toBondStateDescription() = when (this) {
+    BluetoothDevice.BOND_BONDED -> "BONDED"
+    BluetoothDevice.BOND_BONDING -> "BONDING"
+    BluetoothDevice.BOND_NONE -> "NOT BONDED"
+    else -> "ERROR: $this"
+}

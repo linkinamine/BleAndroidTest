@@ -161,7 +161,7 @@ class FirstFragment : Fragment() {
         } else {
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            bleScanner.startScan(getFilters(), scanSettings, scanCallback)
+            bleScanner.startScan(null, scanSettings, scanCallback)
             isScanning = true
         }
     }

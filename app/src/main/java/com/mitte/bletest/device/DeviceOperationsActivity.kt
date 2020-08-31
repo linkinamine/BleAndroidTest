@@ -16,6 +16,7 @@ import com.mitte.bletest.R
 import com.mitte.bletest.extension.hexToBytes
 import com.mitte.bletest.extension.hideKeyboard
 import com.mitte.bletest.extension.showKeyboard
+import com.mitte.bletest.extension.toBondStateDescription
 import kotlinx.android.synthetic.main.activity_ble_operations.*
 import org.jetbrains.anko.alert
 import org.jetbrains.anko.noButton
@@ -64,7 +65,9 @@ class DeviceOperationsActivity : AppCompatActivity() {
             setDisplayShowTitleEnabled(true)
             title = getString(R.string.ble_playground)
         }
+        ConnectionManager.listenToBondStateChanges(this)
         setupRecyclerView()
+
         request_mtu_button.setOnClickListener {
             if (mtu_field.text.isNotEmpty() && mtu_field.text.isNotBlank()) {
                 mtu_field.text.toString().toIntOrNull()?.let { mtu ->
@@ -74,6 +77,18 @@ class DeviceOperationsActivity : AppCompatActivity() {
             } else {
                 log("Please specify a numeric value for desired ATT MTU (23-517)")
             }
+            this@DeviceOperationsActivity.hideKeyboard()
+        }
+        log("bond state: ${device.bondState.toBondStateDescription()}")
+        if (device.bondState != BluetoothDevice.BOND_BONDED) {
+            bond_button.text = "Bond"
+            bond_button.isEnabled = true
+            bond_button.setOnClickListener { device.createBond() }
+            this@DeviceOperationsActivity.hideKeyboard()
+
+        } else {
+            bond_button.text = "Bonded"
+            bond_button.isEnabled = false
             this@DeviceOperationsActivity.hideKeyboard()
         }
     }

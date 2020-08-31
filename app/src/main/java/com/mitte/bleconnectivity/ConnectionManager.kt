@@ -29,6 +29,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
+import com.mitte.bletest.extension.toBondStateDescription
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.util.UUID
@@ -559,12 +560,6 @@ object ConnectionManager {
             }
         }
 
-        private fun Int.toBondStateDescription() = when (this) {
-            BluetoothDevice.BOND_BONDED -> "BONDED"
-            BluetoothDevice.BOND_BONDING -> "BONDING"
-            BluetoothDevice.BOND_NONE -> "NOT BONDED"
-            else -> "ERROR: $this"
-        }
     }
 
     private fun BluetoothDevice.isConnected() = deviceGattMap.containsKey(this)
