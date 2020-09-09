@@ -3,7 +3,12 @@ package com.mitte.bletest.device
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGattCharacteristic
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
@@ -29,36 +34,77 @@ class DeviceOperationsActivity : AppCompatActivity() {
     private val dateFormatter = SimpleDateFormat("MMM d, HH:mm:ss", Locale.US)
     private var randomStrings = arrayListOf<String>()
 
-    private val characteristics by lazy {
-        ConnectionManager.servicesOnDevice(device)?.flatMap { service ->
+
+    private lateinit var connectionManagerService: ConnectionManagerService
+    private lateinit var characteristics: List<BluetoothGattCharacteristic>
+    private lateinit var characteristicProperties: Map<BluetoothGattCharacteristic, List<CharacteristicProperty>>
+    private lateinit var characteristicAdapter: CharacteristicAdapter
+
+    var isBound = false
+
+    private val myConnection = object : ServiceConnection {
+        override fun onServiceConnected(
+            className: ComponentName,
+            service: IBinder
+        ) {
+            val binder = service as ConnectionManagerService.ConnectionManagerBinder
+
+            connectionManagerService = binder.getService()
+
+            isBound = true
+
+            connectionManagerService.registerListener(connectionEventListener)
+
+            connectionManagerService.listenToBondStateChanges(this@DeviceOperationsActivity)
+
+            characteristics = getServices()
+
+            characteristicProperties = characteristics.map { characteristic ->
+                characteristic to mutableListOf<CharacteristicProperty>().apply {
+                    if (characteristic.isNotifiable()) add(CharacteristicProperty.Notifiable)
+                    if (characteristic.isIndicatable()) add(CharacteristicProperty.Indicatable)
+                    if (characteristic.isReadable()) add(CharacteristicProperty.Readable)
+                    if (characteristic.isWritable()) add(CharacteristicProperty.Writable)
+                    if (characteristic.isWritableWithoutResponse()) {
+                        add(CharacteristicProperty.WritableWithoutResponse)
+                    }
+                }.toList()
+            }.toMap()
+
+            characteristicAdapter = CharacteristicAdapter(characteristics) { characteristic ->
+                showCharacteristicOptions(characteristic)
+            }
+
+            runOnUiThread { setupRecyclerView()}
+
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            isBound = false
+            connectionManagerService.unregisterListener(connectionEventListener)
+            connectionManagerService.teardownConnection(device)
+
+        }
+    }
+
+
+    private fun getServices(): List<BluetoothGattCharacteristic> {
+        return ConnectionManager.servicesOnDevice(device)?.flatMap { service ->
             service.characteristics ?: listOf()
         } ?: listOf()
     }
-    private val characteristicProperties by lazy {
-        characteristics.map { characteristic ->
-            characteristic to mutableListOf<CharacteristicProperty>().apply {
-                if (characteristic.isNotifiable()) add(CharacteristicProperty.Notifiable)
-                if (characteristic.isIndicatable()) add(CharacteristicProperty.Indicatable)
-                if (characteristic.isReadable()) add(CharacteristicProperty.Readable)
-                if (characteristic.isWritable()) add(CharacteristicProperty.Writable)
-                if (characteristic.isWritableWithoutResponse()) {
-                    add(CharacteristicProperty.WritableWithoutResponse)
-                }
-            }.toList()
-        }.toMap()
-    }
-    private val characteristicAdapter: CharacteristicAdapter by lazy {
-        CharacteristicAdapter(characteristics) { characteristic ->
-            showCharacteristicOptions(characteristic)
-        }
-    }
+
     private var notifyingCharacteristics = mutableListOf<UUID>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        ConnectionManager.registerListener(connectionEventListener)
+
         super.onCreate(savedInstanceState)
+
         device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             ?: error("Missing BluetoothDevice from MainActivity!")
+
+        val intent = Intent(this, ConnectionManagerService::class.java)
+        bindService(intent, myConnection, Context.BIND_AUTO_CREATE)
 
         setContentView(R.layout.activity_ble_operations)
         supportActionBar?.apply {
@@ -66,14 +112,12 @@ class DeviceOperationsActivity : AppCompatActivity() {
             setDisplayShowTitleEnabled(true)
             title = getString(R.string.ble_playground)
         }
-        ConnectionManager.listenToBondStateChanges(this)
-        setupRecyclerView()
 
         request_mtu_button.setOnClickListener {
             if (mtu_field.text.isNotEmpty() && mtu_field.text.isNotBlank()) {
                 mtu_field.text.toString().toIntOrNull()?.let { mtu ->
                     log("Requesting for MTU value of $mtu")
-                    ConnectionManager.requestMtu(device, mtu)
+                    connectionManagerService?.requestMtu(device, mtu)
                 } ?: log("Invalid MTU value: ${mtu_field.text}")
             } else {
                 log("Please specify a numeric value for desired ATT MTU (23-517)")
@@ -94,11 +138,11 @@ class DeviceOperationsActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        ConnectionManager.unregisterListener(connectionEventListener)
-        ConnectionManager.teardownConnection(device)
-        super.onDestroy()
-    }
+    /*   override fun onDestroy() {
+           connectionManagerService.unregisterListener(connectionEventListener)
+           connectionManagerService.teardownConnection(device)
+           super.onDestroy()
+       }*/
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -147,7 +191,7 @@ class DeviceOperationsActivity : AppCompatActivity() {
                 when (properties[i]) {
                     CharacteristicProperty.Readable -> {
                         log("Reading from ${characteristic.uuid}")
-                        ConnectionManager.readCharacteristic(device, characteristic)
+                        connectionManagerService.readCharacteristic(device, characteristic)
                     }
                     CharacteristicProperty.Writable, CharacteristicProperty.WritableWithoutResponse -> {
                         showWritePayloadDialog(characteristic)
@@ -155,10 +199,10 @@ class DeviceOperationsActivity : AppCompatActivity() {
                     CharacteristicProperty.Notifiable, CharacteristicProperty.Indicatable -> {
                         if (notifyingCharacteristics.contains(characteristic.uuid)) {
                             log("Disabling notifications on ${characteristic.uuid}")
-                            ConnectionManager.disableNotifications(device, characteristic)
+                            connectionManagerService.disableNotifications(device, characteristic)
                         } else {
                             log("Enabling notifications on ${characteristic.uuid}")
-                            ConnectionManager.enableNotifications(device, characteristic)
+                            connectionManagerService.enableNotifications(device, characteristic)
                         }
                     }
                 }
@@ -178,7 +222,7 @@ class DeviceOperationsActivity : AppCompatActivity() {
                     if (isNotBlank() && isNotEmpty()) {
                         randomStrings = generateRandomBytes(this.toInt())
 
-                        ConnectionManager.writeCharacteristic(
+                        connectionManagerService.writeCharacteristic(
                             device,
                             characteristic,
                             randomStrings.first().toByteArray()
@@ -221,7 +265,7 @@ class DeviceOperationsActivity : AppCompatActivity() {
                 log("Read from ${characteristic.uuid}: ${characteristic.value.toReadableString()}")
                 randomStrings.removeAt(0)
                 if (randomStrings.size > 0) {
-                    ConnectionManager.writeCharacteristic(
+                    connectionManagerService.writeCharacteristic(
                         device,
                         characteristic,
                         randomStrings.first().toByteArray()
@@ -231,7 +275,7 @@ class DeviceOperationsActivity : AppCompatActivity() {
 
             onCharacteristicWrite = { _, characteristic ->
                 log("wrote to ${characteristic.uuid}: ${characteristic.value.toReadableString()}")
-                ConnectionManager.readCharacteristic(device, characteristic)
+                connectionManagerService.readCharacteristic(device, characteristic)
             }
 
             onMtuChanged = { _, mtu ->
@@ -253,4 +297,6 @@ class DeviceOperationsActivity : AppCompatActivity() {
             }
         }
     }
+
+
 }

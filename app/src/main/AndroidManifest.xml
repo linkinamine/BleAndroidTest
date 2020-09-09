@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
@@ -27,6 +28,11 @@
             </intent-filter>
         </activity>
         <activity android:name=".device.DeviceOperationsActivity" />
+
+        <service
+            android:name="com.mitte.bleconnectivity.ConnectionManagerService"
+            android:enabled="true"
+            android:exported="true" />
     </application>
 
 </manifest>
