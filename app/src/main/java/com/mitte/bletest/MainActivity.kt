@@ -17,7 +17,6 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
-
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

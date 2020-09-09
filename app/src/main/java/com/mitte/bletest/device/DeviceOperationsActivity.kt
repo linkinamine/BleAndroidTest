@@ -13,7 +13,6 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mitte.bleconnectivity.*
 import com.mitte.bletest.R
-import com.mitte.bletest.extension.hexToBytes
 import com.mitte.bletest.extension.hideKeyboard
 import com.mitte.bletest.extension.showKeyboard
 import com.mitte.bletest.extension.toBondStateDescription
@@ -28,6 +27,8 @@ import java.util.*
 class DeviceOperationsActivity : AppCompatActivity() {
     private lateinit var device: BluetoothDevice
     private val dateFormatter = SimpleDateFormat("MMM d, HH:mm:ss", Locale.US)
+    private var randomStrings = arrayListOf<String>()
+
     private val characteristics by lazy {
         ConnectionManager.servicesOnDevice(device)?.flatMap { service ->
             service.characteristics ?: listOf()
@@ -172,19 +173,36 @@ class DeviceOperationsActivity : AppCompatActivity() {
             customView = hexField
             isCancelable = false
             yesButton {
+
                 with(hexField.text.toString()) {
                     if (isNotBlank() && isNotEmpty()) {
-                        val bytes = hexToBytes()
-                        log("Writing to ${characteristic.uuid}: ${bytes.toHexString()}")
-                        ConnectionManager.writeCharacteristic(device, characteristic, bytes)
+                        randomStrings = generateRandomBytes(this.toInt())
+
+                        ConnectionManager.writeCharacteristic(
+                            device,
+                            characteristic,
+                            randomStrings.first().toByteArray()
+                        )
+
                     } else {
-                        log("Please enter a hex payload to write to ${characteristic.uuid}")
+                        log("Please enter the number of strings to write to ${characteristic.uuid}")
                     }
                 }
+
             }
             noButton {}
         }.show()
         hexField.showKeyboard(this)
+    }
+
+    private fun generateRandomBytes(numberOfStrings: Int): ArrayList<String> {
+        var stringsArray = arrayListOf<String>()
+        val chars = ('a'..'z')
+        for (i in 0 until numberOfStrings) {
+            fun randomString(): String = List(4) { chars.random() }.joinToString("")
+            stringsArray.add(randomString())
+        }
+        return stringsArray
     }
 
     private val connectionEventListener by lazy {
@@ -200,11 +218,20 @@ class DeviceOperationsActivity : AppCompatActivity() {
             }
 
             onCharacteristicRead = { _, characteristic ->
-                log("Read from ${characteristic.uuid}: ${characteristic.value.toHexString()}")
+                log("Read from ${characteristic.uuid}: ${characteristic.value.toReadableString()}")
+                randomStrings.removeAt(0)
+                if (randomStrings.size > 0) {
+                    ConnectionManager.writeCharacteristic(
+                        device,
+                        characteristic,
+                        randomStrings.first().toByteArray()
+                    )
+                }
             }
 
             onCharacteristicWrite = { _, characteristic ->
-                log("Wrote to ${characteristic.uuid}")
+                log("wrote to ${characteristic.uuid}: ${characteristic.value.toReadableString()}")
+                ConnectionManager.readCharacteristic(device, characteristic)
             }
 
             onMtuChanged = { _, mtu ->
@@ -212,7 +239,7 @@ class DeviceOperationsActivity : AppCompatActivity() {
             }
 
             onCharacteristicChanged = { _, characteristic ->
-                log("Value changed on ${characteristic.uuid}: ${characteristic.value.toHexString()}")
+                log("Value changed on ${characteristic.uuid}: ${characteristic.value.toReadableString()}")
             }
 
             onNotificationsEnabled = { _, characteristic ->

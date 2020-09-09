@@ -16,27 +16,23 @@
 
 package com.mitte.bleconnectivity
 
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
-import android.bluetooth.BluetoothGattService
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.mitte.bletest.extension.toBondStateDescription
 import timber.log.Timber
 import java.lang.ref.WeakReference
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 private const val GATT_MIN_MTU_SIZE = 23
+
 /** Maximum BLE MTU size as defined in gatt_api.h. */
 private const val GATT_MAX_MTU_SIZE = 517
 
@@ -59,7 +55,9 @@ object ConnectionManager {
     }
 
     fun registerListener(listener: ConnectionEventListener) {
-        if (listeners.map { it.get() }.contains(listener)) { return }
+        if (listeners.map { it.get() }.contains(listener)) {
+            return
+        }
         listeners.add(WeakReference(listener))
         listeners = listeners.filter { it.get() != null }.toMutableSet()
         Timber.d("Added listener $listener, ${listeners.size} listeners total")
@@ -223,7 +221,11 @@ object ConnectionManager {
         if (operation is Connect) {
             with(operation) {
                 Timber.w("Connecting to ${device.address}")
-                device.connectGatt(context, false, callback)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+                } else {
+                    device.connectGatt(context, false, callback)
+                }
             }
             return
         }
@@ -398,7 +400,12 @@ object ConnectionManager {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
                         Timber.i("Read characteristic $uuid | value: ${value.toHexString()}")
-                        listeners.forEach { it.get()?.onCharacteristicRead?.invoke(gatt.device, this) }
+                        listeners.forEach {
+                            it.get()?.onCharacteristicRead?.invoke(
+                                gatt.device,
+                                this
+                            )
+                        }
                     }
                     BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
                         Timber.e("Read not permitted for $uuid!")
@@ -423,7 +430,12 @@ object ConnectionManager {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
                         Timber.i("Wrote to characteristic $uuid | value: ${value.toHexString()}")
-                        listeners.forEach { it.get()?.onCharacteristicWrite?.invoke(gatt.device, this) }
+                        listeners.forEach {
+                            it.get()?.onCharacteristicWrite?.invoke(
+                                gatt.device,
+                                this
+                            )
+                        }
                     }
                     BluetoothGatt.GATT_WRITE_NOT_PERMITTED -> {
                         Timber.e("Write not permitted for $uuid!")
@@ -483,11 +495,15 @@ object ConnectionManager {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
                         Timber.i("Wrote to descriptor $uuid | value: ${value.toHexString()}")
-
                         if (isCccd()) {
                             onCccdWrite(gatt, value, characteristic)
                         } else {
-                            listeners.forEach { it.get()?.onDescriptorWrite?.invoke(gatt.device, this) }
+                            listeners.forEach {
+                                it.get()?.onDescriptorWrite?.invoke(
+                                    gatt.device,
+                                    this
+                                )
+                            }
                         }
                     }
                     BluetoothGatt.GATT_WRITE_NOT_PERMITTED -> {
@@ -516,7 +532,7 @@ object ConnectionManager {
             val charUuid = characteristic.uuid
             val notificationsEnabled =
                 value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) ||
-                    value.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
+                        value.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
             val notificationsDisabled =
                 value.contentEquals(BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
 
@@ -551,10 +567,11 @@ object ConnectionManager {
             with(intent) {
                 if (action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
                     val device = getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                    val previousBondState = getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, -1)
+                    val previousBondState =
+                        getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, -1)
                     val bondState = getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1)
                     val bondTransition = "${previousBondState.toBondStateDescription()} to " +
-                        bondState.toBondStateDescription()
+                            bondState.toBondStateDescription()
                     Timber.w("${device?.address} bond state changed | $bondTransition")
                 }
             }

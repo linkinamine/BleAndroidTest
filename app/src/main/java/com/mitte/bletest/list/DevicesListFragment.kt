@@ -37,7 +37,7 @@ import java.util.*
 
 private const val ENABLE_BLUETOOTH_REQUEST_CODE = 1
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
-private const val mitteFilter = "mitte-machine-x1"
+private const val mitteFilter = "mitte-machine"
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
@@ -161,7 +161,7 @@ class FirstFragment : Fragment() {
         } else {
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            bleScanner.startScan(null, scanSettings, scanCallback)
+            bleScanner.startScan(getFilters(), scanSettings, scanCallback)
             isScanning = true
         }
     }
